@@ -10,18 +10,19 @@
         body {
             margin: 0;
             padding: 20px;
-            background: #ffffff;
+            background: #18222d;
+            color: white;
             font-family: -apple-system, BlinkMacSystemFont, sans-serif;
             text-align: center;
-            -webkit-tap-highlight-color: transparent;
         }
         #video-container {
             position: relative;
             width: 100%;
-            max-width: 500px;
-            margin: 0 auto;
-            border-radius: 12px;
+            max-width: 400px;
+            margin: 20px auto;
+            border-radius: 16px;
             overflow: hidden;
+            background: black;
         }
         #video {
             width: 100%;
@@ -29,91 +30,104 @@
         }
         #status {
             margin: 15px 0;
-            padding: 10px;
-            color: #333;
+            padding: 12px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 8px;
         }
-        #overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            border: 2px solid rgba(0, 255, 0, 0.5);
-            box-sizing: border-box;
+        #start-button {
+            background: #2481cc;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 24px;
+            font-size: 16px;
+            margin: 20px 0;
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
-    <h2>QR Scanner</h2>
+    <h2>Telegram QR Scanner</h2>
     <div id="video-container">
         <video id="video" playsinline></video>
-        <div id="overlay"></div>
     </div>
-    <div id="status">Initializing camera...</div>
+    <div id="status">Camera will start after button press</div>
+    <button id="start-button">START SCANNING</button>
 
     <script>
-        // Telegram WebApp initialization
         const tg = window.Telegram?.WebApp;
+        const video = document.getElementById('video');
+        const status = document.getElementById('status');
+        const startButton = document.getElementById('start-button');
+        let scanInterval;
+
+        // Telegram WebApp setup
         if (tg) {
             tg.expand();
             tg.enableClosingConfirmation();
             tg.BackButton.show();
-            tg.BackButton.onClick(() => tg.close());
+            tg.BackButton.onClick(() => {
+                stopCamera();
+                tg.close();
+            });
         }
 
-        const video = document.getElementById('video');
-        const status = document.getElementById('status');
-        let scanActive = true;
+        function stopCamera() {
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+            }
+            clearInterval(scanInterval);
+            scanInterval = null;
+        }
 
-        // Camera initialization with retry logic
-        async function initCamera() {
+        async function startCamera() {
             try {
-                status.textContent = "Requesting camera access...";
+                status.textContent = "Starting camera...";
+                startButton.disabled = true;
                 
+                // Must use this specific media constraints format
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: "environment",
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    }
+                        width: { min: 640, ideal: 1280 },
+                        height: { min: 480, ideal: 720 }
+                    },
+                    audio: false
                 });
 
                 video.srcObject = stream;
-                
-                // Special handling for Telegram's autoplay policy
-                video.muted = true;
-                video.playsInline = true;
-                
-                const playPromise = video.play();
-                
-                if (playPromise !== undefined) {
-                    playPromise.catch(err => {
-                        status.textContent = "Please tap to start camera";
-                        video.style.opacity = "0.5";
-                        video.onclick = () => {
-                            video.style.opacity = "1";
-                            video.play();
-                        };
-                    });
-                }
-                
-                status.textContent = "Point camera at QR code";
-                requestAnimationFrame(scan);
+                video.onloadedmetadata = () => {
+                    // Critical for Telegram's WebView
+                    video.muted = true;
+                    video.playsInline = true;
+                    
+                    const playPromise = video.play();
+                    
+                    if (playPromise !== undefined) {
+                        playPromise.then(() => {
+                            status.textContent = "Scanning... Point at QR code";
+                            scanInterval = setInterval(scan, 300);
+                        }).catch(err => {
+                            status.textContent = "Error: " + err.message;
+                            console.error("Play error:", err);
+                        });
+                    }
+                };
                 
             } catch (err) {
-                status.textContent = `Error: ${err.message}`;
-                if (tg) {
-                    tg.showAlert(`Camera access required: ${err.message}`);
-                }
+                status.textContent = `Camera Error: ${err.name}`;
                 console.error("Camera error:", err);
+                
+                if (tg) {
+                    tg.showAlert(`Please enable camera permissions in Telegram settings\n\nError: ${err.message}`);
+                }
+                
+                startButton.disabled = false;
             }
         }
 
-        // QR scanning function
         function scan() {
-            if (!scanActive) return;
-            
             if (video.readyState >= video.HAVE_ENOUGH_DATA) {
                 try {
                     const canvas = document.createElement('canvas');
@@ -122,42 +136,36 @@
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                     
-                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                    const code = jsQR(imageData.data, imageData.width, imageData.height);
+                    const code = jsQR(
+                        ctx.getImageData(0, 0, canvas.width, canvas.height).data,
+                        canvas.width,
+                        canvas.height
+                    );
                     
                     if (code) {
-                        status.textContent = `Detected: ${code.data}`;
-                        scanActive = false;
+                        status.textContent = `✅ Found: ${code.data}`;
+                        stopCamera();
                         
                         if (tg) {
                             tg.sendData(code.data);
-                            setTimeout(() => tg.close(), 500);
+                            setTimeout(() => tg.close(), 1000);
                         }
-                        return;
                     }
                 } catch (e) {
                     console.error("Scan error:", e);
                 }
             }
-            
-            requestAnimationFrame(scan);
         }
 
-        // Start when WebApp is fully ready
-        if (tg) {
-            tg.ready();
-            tg.onEvent('viewportChanged', () => {
-                if (tg.isExpanded) {
-                    initCamera();
-                }
-            });
-        }
-        
-        document.addEventListener('DOMContentLoaded', () => {
-            if (!tg || tg.isExpanded) {
-                initCamera();
-            }
+        // Start when button clicked (required for Telegram WebView)
+        startButton.addEventListener('click', () => {
+            startCamera();
         });
+
+        // Alternative start if not in Telegram
+        if (!tg) {
+            startButton.click();
+        }
     </script>
 </body>
 </html>
