@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>QR Scanner</title>
+    <title>Scanner QR</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <style>
@@ -47,12 +47,11 @@
     </style>
 </head>
 <body>
-    <h2>Telegram QR Scanner</h2>
+    <h2>Scanner QR</h2>
     <div id="video-container">
         <video id="video" playsinline></video>
     </div>
-    <div id="status">Camera will start after button press</div>
-    <button id="start-button">START SCANNING</button>
+    <button id="start-button">Scannerizza codice QR</button>
 
     <script>
         const tg = window.Telegram?.WebApp;
@@ -83,7 +82,7 @@
 
         async function startCamera() {
             try {
-                status.textContent = "Starting camera...";
+                status.textContent = "Avvio fotocamera...";
                 startButton.disabled = true;
                 
                 // Must use this specific media constraints format
@@ -106,7 +105,7 @@
                     
                     if (playPromise !== undefined) {
                         playPromise.then(() => {
-                            status.textContent = "Scanning... Point at QR code";
+                            status.textContent = "Inquadra il codice QR";
                             scanInterval = setInterval(scan, 300);
                         }).catch(err => {
                             status.textContent = "Error: " + err.message;
