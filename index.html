@@ -1,24 +1,82 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>QR Scanner</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            text-align: center;
+        }
+        #container {
+            padding: 20px;
+        }
+        #video {
+            width: 100%;
+            max-width: 500px;
+            border-radius: 10px;
+            margin: 10px auto;
+            display: block;
+        }
+        #status {
+            color: #ff0000;
+            padding: 10px;
+        }
+    </style>
 </head>
 <body>
-    <video id="video" width="100%" playsinline></video>
+    <div id="container">
+        <h2>Telegram QR Scanner</h2>
+        <video id="video" playsinline></video>
+        <div id="status">Initializing camera...</div>
+    </div>
+
     <script>
-        const tg = Telegram.WebApp;
+        const tg = window.Telegram?.WebApp;
+        if (tg) {
+            tg.expand();
+            tg.enableClosingConfirmation();
+        }
+
         const video = document.getElementById('video');
-        
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-            .then(stream => {
+        const status = document.getElementById('status');
+        let scannerActive = true;
+
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: "environment",
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                });
+                
                 video.srcObject = stream;
-                video.play();
-                scanFrame();
-            });
-        
-        function scanFrame() {
+                video.onloadedmetadata = () => {
+                    video.play();
+                    status.textContent = "Scanning... Point camera at QR code";
+                    requestAnimationFrame(scan);
+                };
+                
+            } catch (err) {
+                status.textContent = `ERROR: ${err.message}`;
+                if (tg) {
+                    tg.showAlert(`Camera access required: ${err.message}`);
+                }
+            }
+        }
+
+        function scan() {
+            if (!scannerActive) return;
+            
             if (video.readyState === video.HAVE_ENOUGH_DATA) {
                 const canvas = document.createElement('canvas');
                 canvas.width = video.videoWidth;
@@ -26,17 +84,33 @@
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                 
-                const code = jsQR(ctx.getImageData(0, 0, canvas.width, canvas.height).data, 
-                                canvas.width, canvas.height);
-                
-                if (code) {
-                    tg.sendData(code.data);
-                    tg.close();
-                } else {
-                    requestAnimationFrame(scanFrame);
+                try {
+                    const code = jsQR(
+                        ctx.getImageData(0, 0, canvas.width, canvas.height).data,
+                        canvas.width,
+                        canvas.height
+                    );
+                    
+                    if (code) {
+                        status.textContent = `Detected: ${code.data}`;
+                        if (tg) {
+                            tg.sendData(code.data);
+                            tg.close();
+                        }
+                        scannerActive = false;
+                    }
+                } catch (e) {
+                    console.error("QR scan error:", e);
                 }
             }
+            
+            if (scannerActive) {
+                requestAnimationFrame(scan);
+            }
         }
+
+        // Start everything
+        document.addEventListener('DOMContentLoaded', initCamera);
     </script>
 </body>
 </html>
