@@ -9,108 +9,155 @@
     <style>
         body {
             margin: 0;
-            padding: 0;
+            padding: 20px;
             background: #ffffff;
             font-family: -apple-system, BlinkMacSystemFont, sans-serif;
             text-align: center;
+            -webkit-tap-highlight-color: transparent;
         }
-        #container {
-            padding: 20px;
+        #video-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            border-radius: 12px;
+            overflow: hidden;
         }
         #video {
             width: 100%;
-            max-width: 500px;
-            border-radius: 10px;
-            margin: 10px auto;
             display: block;
         }
         #status {
-            color: #ff0000;
+            margin: 15px 0;
             padding: 10px;
+            color: #333;
+        }
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            border: 2px solid rgba(0, 255, 0, 0.5);
+            box-sizing: border-box;
         }
     </style>
 </head>
 <body>
-    <div id="container">
-        <h2>Telegram QR Scanner</h2>
+    <h2>QR Scanner</h2>
+    <div id="video-container">
         <video id="video" playsinline></video>
-        <div id="status">Initializing camera...</div>
+        <div id="overlay"></div>
     </div>
+    <div id="status">Initializing camera...</div>
 
     <script>
+        // Telegram WebApp initialization
         const tg = window.Telegram?.WebApp;
         if (tg) {
             tg.expand();
             tg.enableClosingConfirmation();
+            tg.BackButton.show();
+            tg.BackButton.onClick(() => tg.close());
         }
 
         const video = document.getElementById('video');
         const status = document.getElementById('status');
-        let scannerActive = true;
+        let scanActive = true;
 
+        // Camera initialization with retry logic
         async function initCamera() {
             try {
+                status.textContent = "Requesting camera access...";
+                
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: "environment",
                         width: { ideal: 1280 },
                         height: { ideal: 720 }
-                    },
-                    audio: false
+                    }
                 });
-                
+
                 video.srcObject = stream;
-                video.onloadedmetadata = () => {
-                    video.play();
-                    status.textContent = "Scanning... Point camera at QR code";
-                    requestAnimationFrame(scan);
-                };
+                
+                // Special handling for Telegram's autoplay policy
+                video.muted = true;
+                video.playsInline = true;
+                
+                const playPromise = video.play();
+                
+                if (playPromise !== undefined) {
+                    playPromise.catch(err => {
+                        status.textContent = "Please tap to start camera";
+                        video.style.opacity = "0.5";
+                        video.onclick = () => {
+                            video.style.opacity = "1";
+                            video.play();
+                        };
+                    });
+                }
+                
+                status.textContent = "Point camera at QR code";
+                requestAnimationFrame(scan);
                 
             } catch (err) {
-                status.textContent = `ERROR: ${err.message}`;
+                status.textContent = `Error: ${err.message}`;
                 if (tg) {
                     tg.showAlert(`Camera access required: ${err.message}`);
                 }
+                console.error("Camera error:", err);
             }
         }
 
+        // QR scanning function
         function scan() {
-            if (!scannerActive) return;
+            if (!scanActive) return;
             
-            if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                const canvas = document.createElement('canvas');
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                
+            if (video.readyState >= video.HAVE_ENOUGH_DATA) {
                 try {
-                    const code = jsQR(
-                        ctx.getImageData(0, 0, canvas.width, canvas.height).data,
-                        canvas.width,
-                        canvas.height
-                    );
+                    const canvas = document.createElement('canvas');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const code = jsQR(imageData.data, imageData.width, imageData.height);
                     
                     if (code) {
                         status.textContent = `Detected: ${code.data}`;
+                        scanActive = false;
+                        
                         if (tg) {
                             tg.sendData(code.data);
-                            tg.close();
+                            setTimeout(() => tg.close(), 500);
                         }
-                        scannerActive = false;
+                        return;
                     }
                 } catch (e) {
-                    console.error("QR scan error:", e);
+                    console.error("Scan error:", e);
                 }
             }
             
-            if (scannerActive) {
-                requestAnimationFrame(scan);
-            }
+            requestAnimationFrame(scan);
         }
 
-        // Start everything
-        document.addEventListener('DOMContentLoaded', initCamera);
+        // Start when WebApp is fully ready
+        if (tg) {
+            tg.ready();
+            tg.onEvent('viewportChanged', () => {
+                if (tg.isExpanded) {
+                    initCamera();
+                }
+            });
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!tg || tg.isExpanded) {
+                initCamera();
+            }
+        });
     </script>
 </body>
 </html>
