@@ -147,6 +147,7 @@
                         
                         if (tg) {
                             tg.sendData(code);
+                            status.textContent = code;
                             setTimeout(() => tg.close(), 1000);
                         }
                     }
