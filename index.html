@@ -144,10 +144,14 @@
                     
                     if (code) {
                         stopCamera();
+                        status.textContent = code.data;
                         
                         if (tg) {
-                            tg.sendData(code.data);
-                            status.textContent = code.data;
+                            const dataToSend = JSON.stringify({
+                              data: code
+                            });
+                            tg.sendData(dataToSend);
+                            
                             setTimeout(() => tg.close(), 1000);
                         }
                     }
