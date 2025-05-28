@@ -146,8 +146,8 @@
                         stopCamera();
                         
                         if (tg) {
-                            tg.sendData(code);
-                            status.textContent = code;
+                            tg.sendData(code.data);
+                            status.textContent = code.data;
                             setTimeout(() => tg.close(), 1000);
                         }
                     }
