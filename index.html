@@ -142,7 +142,7 @@
                     );
                     
                     if (code) {
-                        status.textContent = `✅ Found: ${code.data}`;
+                        Telegram.WebApp.sendData(code.data);
                         stopCamera();
                         
                         if (tg) {
