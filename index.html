@@ -147,10 +147,8 @@
                         status.textContent = code.data;
                         
                         if (tg) {
-                            const dataToSend = JSON.stringify({
-                              data: code.data
-                            });
-                            tg.sendData(dataToSend);
+        
+                            tg.sendData(code.data);
                             
                             setTimeout(() => tg.close(), 1000);
                         }
